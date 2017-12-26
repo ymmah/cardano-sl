@@ -43,7 +43,7 @@ import           Pos.Lrc.Context (HasLrcContext)
 import qualified Pos.Lrc.DB as LrcDB
 import           Pos.Slotting.Class (MonadSlots (getCurrentSlot))
 import qualified Pos.Update.DB as GS (getAdoptedBVFull)
-import           Pos.Util (buildListBounds, _neHead, _neLast)
+import           Pos.Util (buildListBounds, tempMeasure, _neHead, _neLast)
 import           Pos.Util.Chrono (NE, NewestFirst (..), OldestFirst (..), toNewestFirst,
                                   toOldestFirst, _NewestFirst, _OldestFirst)
 
@@ -255,6 +255,7 @@ getHeadersFromManyTo ::
        , MonadError Text m
        , HasConfiguration
        , HasBlockConfiguration
+       , MonadIO m
        )
     => NonEmpty HeaderHash -- ^ Checkpoints; not guaranteed to be
                            --   in any particular order
@@ -270,6 +271,7 @@ getHeadersFromManyTo checkpoints startM = do
 
     -- This filters out invalid/unknown checkpoints also.
     inMainCheckpoints <-
+        tempMeasure "getHeadersFromManyTo.checkpoints" $
         noteM "no checkpoints are in the main chain" $
         nonEmpty <$> filterM GS.isBlockInMainChain (toList checkpoints)
     let inMainCheckpointsHashes = map headerHash inMainCheckpoints
@@ -285,11 +287,14 @@ getHeadersFromManyTo checkpoints startM = do
         -- starting with the newest header.
         else do
             newestCheckpoint <-
+                tempMeasure "getHeadersFromManyTo.newestCheckpoint" $
                 maximumBy (comparing getEpochOrSlot) . catMaybes <$>
                 mapM DB.getHeader (toList inMainCheckpoints)
             let loadUpCond (headerHash -> curH) h =
                     curH /= startHash && h < recoveryHeadersMessage
-            up <- GS.loadHeadersUpWhile newestCheckpoint loadUpCond
+            up <-
+                tempMeasure "getHeadersFromManyTo.loadUpWhile" $
+                GS.loadHeadersUpWhile newestCheckpoint loadUpCond
             res <-
                 note "loadHeadersUpWhile returned empty list" $
                 _NewestFirst nonEmpty (toNewestFirst $ over _OldestFirst (drop 1) up)

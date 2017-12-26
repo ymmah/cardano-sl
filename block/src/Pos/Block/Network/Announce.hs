@@ -31,6 +31,7 @@ import qualified Pos.DB.BlockIndex as DB
 import           Pos.Recovery.Info (recoveryInProgress)
 import           Pos.Security.Params (AttackType (..), NodeAttackedError (..), SecurityParams (..))
 import           Pos.Security.Util (shouldIgnoreAddress)
+import           Pos.Util (tempMeasure)
 import           Pos.Util.TimeWarp (nodeIdToAddress)
 
 announceBlockOuts :: (Message MsgGetHeaders, Message MsgHeaders) => OutSpecs
@@ -71,15 +72,18 @@ handleHeadersCommunication
 handleHeadersCommunication conv = do
     whenJustM (recvLimited conv) $ \mgh@(MsgGetHeaders {..}) -> do
         logDebug $ sformat ("Got request on handleGetHeaders: "%build) mgh
-        ifM recoveryInProgress onRecovery $ do
+        ifM recoveryInProgress onRecovery $ tempMeasure "handleGetHeaders" $ do
             headers <- case (mghFrom,mghTo) of
                 ([], Nothing) -> Right . one <$> getLastMainHeader
                 ([], Just h)  ->
                     maybeToRight "getBlockHeader returned Nothing" . fmap one <$>
                     DB.getHeader h
                 (c1:cxs, _)   ->
-                    first ("getHeadersFromManyTo: " <>) <$>
-                    runExceptT (getHeadersFromManyTo (c1:|cxs) mghTo)
+                    tempMeasure "getHeadersFromManyTo" $ do
+                      (!r) <- first ("getHeadersFromManyTo: " <>) <$>
+                             runExceptT (getHeadersFromManyTo (c1:|cxs) mghTo)
+                      !() <- deepseq r $ logDebug "a"
+                      pure r
             either onNoHeaders handleSuccess headers
   where
     -- retrieves header of the newest main block if there's any,
@@ -92,9 +96,8 @@ handleHeadersCommunication conv = do
             Left _  -> fromMaybe tipHeader <$> DB.getHeader (tip ^. prevBlockL)
             Right _ -> pure tipHeader
     handleSuccess h = do
-        send conv (MsgHeaders h)
+        tempMeasure "handleGetHeadersResponse" $ send conv (MsgHeaders h)
         logDebug "handleGetHeaders: responded successfully"
-        handleHeadersCommunication conv
     onNoHeaders reason = do
         let err = "handleGetHeaders: couldn't retrieve headers, reason: " <> reason
         logWarning err

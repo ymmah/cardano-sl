@@ -30,6 +30,7 @@ import           Pos.Communication.Protocol (ConversationActions (..), ListenerS
 import qualified Pos.DB.Class as DB
 import           Pos.DB.Error (DBError (DBMalformed))
 import           Pos.Network.Types (Bucket, NodeId)
+import           Pos.Util (tempMeasure)
 import           Pos.Util.Chrono (NewestFirst (..))
 
 blockListeners
@@ -64,14 +65,18 @@ handleGetBlocks
        (BlockWorkMode ctx m)
     => OQ.OutboundQ pack NodeId Bucket
     -> (ListenerSpec m, OutSpecs)
-handleGetBlocks oq = listenerConv oq $ \__ourVerInfo nodeId conv -> do
+handleGetBlocks oq = listenerConv oq $ \__ourVerInfo nodeId conv -> tempMeasure "handleGetBlocks" $ do
     mbMsg <- recvLimited conv
     whenJust mbMsg $ \mgb@MsgGetBlocks{..} -> do
         logDebug $ sformat ("handleGetBlocks: got request "%build%" from "%build)
             mgb nodeId
         -- We fail if we're requested to give more than
         -- recoveryHeadersMessage headers at once.
-        getHeadersRange (Just recoveryHeadersMessage) mgbFrom mgbTo >>= \case
+        (!headers) <-
+            tempMeasure "handleGetBlocks.getHeadersRange" $
+            force <$>
+            getHeadersRange (Just recoveryHeadersMessage) mgbFrom mgbTo
+        tempMeasure "handleGetBlocks.sending" $ case headers of
             Right hashes -> do
                 logDebug $ sformat
                     ("handleGetBlocks: started sending "%int%

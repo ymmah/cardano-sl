@@ -46,7 +46,7 @@ import           Pos.Core.Block (Block, BlockHeader, blockHeader)
 import           Pos.Crypto (shortHashF)
 import           Pos.Reporting (reportOrLogE, reportOrLogW)
 import           Pos.Slotting.Util (getCurrentEpochSlotDuration)
-import           Pos.Util (buildListBounds, _neHead, _neLast)
+import           Pos.Util (buildListBounds, tempMeasure, _neHead, _neLast)
 import           Pos.Util.Chrono (NE, NewestFirst (..), OldestFirst (..), _NewestFirst,
                                   _OldestFirst)
 import           Pos.Util.Timer (Timer, setTimerDuration, startTimer)
@@ -110,7 +110,7 @@ retrievalWorkerImpl keepAliveTimer SendActions {..} =
         slotDuration <- fromIntegral . toMicroseconds <$> getCurrentEpochSlotDuration
         setTimerDuration keepAliveTimer $ 3 * slotDuration
         startTimer keepAliveTimer
-        thingToDoNext
+        tempMeasure "mainLoopGeneral" thingToDoNext
         mainLoop
     mainLoopE e = do
         -- REPORT:ERROR 'reportOrLogE' in block retrieval worker.
@@ -133,7 +133,7 @@ retrievalWorkerImpl keepAliveTimer SendActions {..} =
             brtHeader
 
     -- When we have a continuation of the chain, just try to get and apply it.
-    handleContinues nodeId header = do
+    handleContinues nodeId header = tempMeasure "handleContinues" $ do
         let hHash = headerHash header
         logDebug $ "handleContinues: " <> pretty hHash
         classifyNewHeader header >>= \case
@@ -146,7 +146,7 @@ retrievalWorkerImpl keepAliveTimer SendActions {..} =
     -- When we have an alternative header, we should check whether it's actually
     -- recovery mode (server side should send us headers as a proof) and then
     -- enter recovery mode.
-    handleAlternative nodeId header = do
+    handleAlternative nodeId header = tempMeasure "handleAlternative" $ do
         logDebug $ "handleAlternative: " <> pretty (headerHash header)
         classifyNewHeader header >>= \case
             CHInvalid _ ->
@@ -178,7 +178,7 @@ retrievalWorkerImpl keepAliveTimer SendActions {..} =
 
     -- Recovery handling. We assume that header in the recovery variable is
     -- appropriate and just query headers/blocks.
-    handleRecovery nodeId header = do
+    handleRecovery nodeId header = tempMeasure "handleContinues" $ do
         logDebug "Block retrieval queue is empty and we're in recovery mode,\
                  \ so we will request more headers and blocks"
         mkHeadersRequest (headerHash header) >>= \case
@@ -195,7 +195,8 @@ retrievalWorkerImpl keepAliveTimer SendActions {..} =
                 -- If it returns w/o exception then we're:
                 --  * Either still in recovery mode
                 --  * Or just exited it and recoverVar was taken.
-                enqueueMsgSingle
+                tempMeasure "handleContinuesAll" $
+                  enqueueMsgSingle
                     enqueueMsg
                     (MsgRequestBlockHeaders $ Just $ S.singleton nodeId)
                     (Conversation $ requestHeaders cont mgh nodeId)
@@ -320,7 +321,7 @@ getProcessBlocks
     -> BlockHeader
     -> HeaderHash
     -> m ()
-getProcessBlocks enqueue nodeId lcaChild newestHash = do
+getProcessBlocks enqueue nodeId lcaChild newestHash = tempMeasure "getProcessBlocks" $ do
     -- The conversation will attempt to retrieve the necessary blocks and apply
     -- them. Each one gives a 'Bool' where 'True' means that a recovery was
     -- completed (depends upon the state of the recovery-mode TMVar).
@@ -330,9 +331,11 @@ getProcessBlocks enqueue nodeId lcaChild newestHash = do
         logDebug $ sformat ("Requesting blocks from "%shortHashF%" to "%shortHashF)
                            lcaChildHash
                            newestHash
-        send conv $ mkBlocksRequest lcaChildHash newestHash
-        logDebug "Requested blocks, waiting for the response"
-        chainE <- runExceptT (retrieveBlocks conv lcaChild newestHash)
+        chainE <-
+            tempMeasure "sendReceiveBlocks" $ do
+                send conv $ mkBlocksRequest lcaChildHash newestHash
+                logDebug "Requested blocks, waiting for the response"
+                runExceptT (retrieveBlocks conv lcaChild newestHash)
         recHeaderVar <- view (lensOf @RecoveryHeaderTag)
         case chainE of
             Left e -> do
@@ -348,7 +351,7 @@ getProcessBlocks enqueue nodeId lcaChild newestHash = do
                     (blocks ^. _OldestFirst . to NE.length)
                     (unitBuilder $ biSize blocks)
                     (getOldestFirst $ map headerHash blocks)
-                handleBlocks nodeId blocks enqueue
+                tempMeasure "handleBlocks" $ handleBlocks nodeId blocks enqueue
                 dropUpdateHeader
                 -- If we've downloaded any block with bigger
                 -- difficulty than ncrecoveryheader, we're

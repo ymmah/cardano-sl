@@ -22,8 +22,8 @@ import           Pos.Txp (txpGlobalSettings)
 import           Pos.Update.Configuration (HasUpdateConfiguration)
 import           Pos.Util.CompileInfo (HasCompileInfo, retrieveCompileTimeInfo, withCompileInfo)
 import           Pos.Util.UserSecret (usVss)
-import           Pos.Wallet.Web (bracketWalletWS, bracketWalletWebDB, getSKById, getWalletAddresses,
-                                 runWRealMode, syncWalletsWithGState, AddrCIdHashes (..))
+import           Pos.Wallet.Web (AddrCIdHashes (..), bracketWalletWS, bracketWalletWebDB, getSKById,
+                                 getWalletAddresses, runWRealMode, syncWalletsWithGState)
 import           Pos.Wallet.Web.Mode (WalletWebMode)
 import           Pos.Wallet.Web.State (flushWalletStorage)
 import           System.Wlog (LoggerName, logInfo)
@@ -67,9 +67,9 @@ actionWithWallet sscParams nodeParams wArgs@WalletBackendParams {..} =
             logInfo "Resyncing wallets with blockchain..."
             syncWallets
 
-    runNodeWithInit init nr =
+    runNodeWithInit initial nr =
         let (ActionSpec f, outs) = runNode nr plugins
-         in (ActionSpec $ \s -> init >> f s, outs)
+        in (ActionSpec $ \s -> initial >> f s, outs)
 
     syncWallets :: WalletWebMode ()
     syncWallets = do
@@ -124,13 +124,13 @@ generateSwaggerDocumentation :: ( MonadIO m
                                 ) => m ()
 generateSwaggerDocumentation = liftIO $ do
     BL8.writeFile "wallet-new/spec/swagger.json" (encodePretty Swagger.api)
-    putText "Swagger API written on disk."
+    putTextLn "Swagger API written on disk."
 
 -- | The main entrypoint for the Wallet.
 main :: IO ()
 main = withCompileInfo $(retrieveCompileTimeInfo) $ do
   cfg <- getWalletNodeOptions
-  putText "Wallet is starting..."
+  putTextLn "Wallet is starting..."
   let loggingParams = CLI.loggingParams loggerName (wsoNodeArgs cfg)
   loggerBracket loggingParams . runProduction $ do
     logInfo "[Attention] Software is built with the wallet backend"

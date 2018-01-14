@@ -130,6 +130,7 @@ slogVerifyBlocks blocks = do
     let dataMustBeKnown = mustDataBeKnown adoptedBV
     let headEpoch = blocks ^. _Wrapped . _neHead . epochIndexL
     leaders <-
+      tempMeasure "slog.1" $
         lrcActionOnEpochReason
             headEpoch
             (sformat
@@ -144,7 +145,8 @@ slogVerifyBlocks blocks = do
             when (block ^. genBlockLeaders /= leaders) $
             throwError "Genesis block leaders don't match with LRC-computed"
         _ -> pass
-    verResToMonadError formatAllErrors $
+    tempMeasure "slog.2" $
+      verResToMonadError formatAllErrors $
         verifyBlocks curSlot dataMustBeKnown adoptedBVD leaders blocks
     -- Here we need to compute 'SlogUndo'. When we add apply a block,
     -- we can remove one of the last slots stored in
@@ -174,7 +176,10 @@ slogVerifyBlocks blocks = do
             (replicate (length blocks - length removedSlots) Nothing <>)
     -- NE.fromList is safe here, because it's obvious that the size of
     -- 'slogUndo' is the same as the size of 'blocks'.
-    return $ over _Wrapped NE.fromList $ map SlogUndo slogUndo
+    tempMeasure "slog.3" $
+      return $
+        force $
+        over _Wrapped NE.fromList $ map SlogUndo slogUndo
 
 -- | Set of constraints necessary to apply/rollback blocks in Slog.
 type MonadSlogApply ctx m =

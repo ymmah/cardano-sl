@@ -30,9 +30,9 @@ import           Pos.Update.Configuration (HasUpdateConfiguration, lastKnownBloc
 import           Pos.Update.DB (UpdateOp (..))
 import           Pos.Update.Poll (BlockVersionState, ConfirmedProposalState, MonadPoll,
                                   PollModifier (..), PollVerFailure, ProposalState, USUndo,
-                                  canCreateBlockBV, execPollT, execRollT, processGenesisBlock,
-                                  recordBlockIssuance, reportUnexpectedError, rollbackUS, runDBPoll,
-                                  runPollT, verifyAndApplyUSPayload)
+                                  canCreateBlockBV, execPollT, execRollT, getAdoptedBV,
+                                  processGenesisBlock, recordBlockIssuance, reportUnexpectedError,
+                                  rollbackUS, runDBPoll, runPollT, verifyAndApplyUSPayload)
 import           Pos.Util.AssertMode (inAssertMode)
 import           Pos.Util.Chrono (NE, NewestFirst, OldestFirst)
 import qualified Pos.Util.Modifier as MM
@@ -144,6 +144,8 @@ processModifier pm@PollModifier {pmSlottingData = newSlottingData} =
 -- known. Currently it only means that 'UpdateProposal's must have
 -- only known attributes, but I can't guarantee this comment will
 -- always be up-to-date.
+--
+-- All blocks must be from the same epoch.
 usVerifyBlocks
     :: (USGlobalVerifyMode ctx m, MonadReporting ctx m)
     => Bool
@@ -152,18 +154,22 @@ usVerifyBlocks
 usVerifyBlocks verifyAllIsKnown blocks =
     withUSLogger $
     reportUnexpectedError $
-    runExceptT (swap <$> run (mapM (verifyBlock verifyAllIsKnown) blocks))
+    runExceptT (swap <$> run action)
   where
+    action = do
+        lastAdopted <- getAdoptedBV
+        mapM (verifyBlock lastAdopted verifyAllIsKnown) blocks
     run = runDBPoll . runPollT def
 
 verifyBlock
     :: (USGlobalVerifyMode ctx m, MonadPoll m, MonadError PollVerFailure m)
-    => Bool -> UpdateBlock -> m USUndo
-verifyBlock _ (ComponentBlockGenesis genBlk) =
+    => BlockVersion -> Bool -> UpdateBlock -> m USUndo
+verifyBlock _ _ (ComponentBlockGenesis genBlk) =
     execRollT $ processGenesisBlock (genBlk ^. epochIndexL)
-verifyBlock verifyAllIsKnown (ComponentBlockMain header payload) =
+verifyBlock lastAdopted verifyAllIsKnown (ComponentBlockMain header payload) =
     execRollT $ do
         verifyAndApplyUSPayload
+            lastAdopted
             verifyAllIsKnown
             (Right header)
             payload
@@ -191,7 +197,9 @@ usCanCreateBlock ::
        )
     => m Bool
 usCanCreateBlock =
-    withUSLogger $ runDBPoll $ canCreateBlockBV lastKnownBlockVersion
+    withUSLogger $ runDBPoll $ do
+        lastAdopted <- getAdoptedBV
+        canCreateBlockBV lastAdopted lastKnownBlockVersion
 
 ----------------------------------------------------------------------------
 -- Conversion to batch

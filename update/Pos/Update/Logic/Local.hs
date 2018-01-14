@@ -48,9 +48,9 @@ import           Pos.Update.MemState (LocalVotes, MemPool (..), MemState (..), M
                                       UpdateProposals, addToMemPool, withUSLock)
 import           Pos.Update.Poll (MonadPoll (deactivateProposal), MonadPollRead (getProposal),
                                   PollModifier, PollVerFailure (..), evalPollT, execPollT,
-                                  filterProposalsByThd, modifyPollModifier, normalizePoll,
-                                  refreshPoll, reportUnexpectedError, runDBPoll, runPollT,
-                                  verifyAndApplyUSPayload)
+                                  filterProposalsByThd, getAdoptedBV, modifyPollModifier,
+                                  normalizePoll, refreshPoll, reportUnexpectedError, runDBPoll,
+                                  runPollT, verifyAndApplyUSPayload)
 import           Pos.Update.Poll.Types (canCombineVotes, psVotes)
 import           Pos.Util.Util (HasLens (..), HasLens')
 
@@ -147,8 +147,9 @@ processSkeleton payload =
   where
     processSkeletonDo ms@MemState {..} = do
         modifier <-
-            runDBPoll . evalPollT msModifier . execPollT def $
-            verifyAndApplyUSPayload True (Left msSlot) payload
+            runDBPoll . evalPollT msModifier . execPollT def $ do
+                lastAdopted <- getAdoptedBV
+                verifyAndApplyUSPayload lastAdopted True (Left msSlot) payload
         let newModifier = modifyPollModifier msModifier modifier
         let newPool = addToMemPool payload msPool
         pure $ ms {msModifier = newModifier, msPool = newPool}

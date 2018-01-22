@@ -55,11 +55,11 @@ mkVssCertificate sk vk expiry =
 -- | Recreate 'VssCertificate' from its contents. This function may
 -- 'fail' if data is invalid.
 checkVssCertificate
-    :: (HasCryptoConfiguration, Bi EpochIndex, MonadFail m)
+    :: (HasCryptoConfiguration, Bi EpochIndex, MonadError Text m)
     => VssCertificate
     -> m VssCertificate
 checkVssCertificate it =
-    it <$ (unless (checkCertSign it) $ fail "checkVssCertificate: invalid sign")
+    it <$ (unless (checkCertSign it) $ throwError "checkVssCertificate: invalid sign")
 
 -- CHECK: @checkCertSign
 -- | Check that the VSS certificate is signed properly
@@ -78,7 +78,9 @@ toCertPair vc = (getCertId vc, vc)
 
 -- | Safe constructor of 'VssCertificatesMap'. It doesn't allow certificates
 -- with duplicate signing keys or with duplicate 'vcVssKey's.
-mkVssCertificatesMap :: [VssCertificate] -> Either Text VssCertificatesMap
+mkVssCertificatesMap
+    :: MonadError Text m
+    => [VssCertificate] -> m VssCertificatesMap
 mkVssCertificatesMap certs = do
     pure $ UnsafeVssCertificatesMap (HM.fromList (map toCertPair certs))
 

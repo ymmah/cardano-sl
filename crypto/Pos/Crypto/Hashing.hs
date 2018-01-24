@@ -52,7 +52,7 @@ import qualified Prelude
 import qualified Serokell.Util.Base16 as B16
 import           System.IO.Unsafe (unsafeDupablePerformIO)
 
-import           Pos.Binary.Class (Bi, Raw)
+import           Pos.Binary.Class (BiDec, BiEnc, Raw)
 import qualified Pos.Binary.Class as Bi
 
 ----------------------------------------------------------------------------
@@ -76,7 +76,7 @@ instance Eq a => Eq (WithHash a) where
 instance Ord a => Ord (WithHash a) where
     a <= b = whData a <= whData b
 
-withHash :: Bi a => a -> WithHash a
+withHash :: BiEnc a => a -> WithHash a
 withHash a = WithHash a (force h)
   where
     h = hash a
@@ -130,18 +130,18 @@ decodeAbstractHash prettyHash = do
         Just digest -> return (AbstractHash digest)
 
 -- | Parses given hash in base16 form.
-decodeHash :: Bi (Hash a) => Text -> Either Text (Hash a)
+decodeHash :: BiDec (Hash a) => Text -> Either Text (Hash a)
 decodeHash = decodeAbstractHash @Blake2b_256
 
 -- | Encode thing as 'Binary' data and then wrap into constructor.
 abstractHash
-    :: (HashAlgorithm algo, Bi a)
+    :: (HashAlgorithm algo, BiEnc a)
     => a -> AbstractHash algo a
 abstractHash = unsafeAbstractHash
 
 -- | Unsafe version of abstractHash.
 unsafeAbstractHash
-    :: (HashAlgorithm algo, Bi a)
+    :: (HashAlgorithm algo, BiEnc a)
     => a -> AbstractHash algo b
 unsafeAbstractHash = AbstractHash . Hash.hashlazy . Bi.serializeWith 32 1024
 
@@ -149,7 +149,7 @@ unsafeAbstractHash = AbstractHash . Hash.hashlazy . Bi.serializeWith 32 1024
 type Hash = AbstractHash Blake2b_256
 
 -- | Short version of 'unsafeHash'.
-hash :: Bi a => a -> Hash a
+hash :: BiEnc a => a -> Hash a
 hash = unsafeHash
 
 -- | Raw constructor application.
@@ -160,7 +160,7 @@ hashRaw' :: ByteString -> Hash Raw
 hashRaw' = AbstractHash . Hash.hash
 
 -- | Encode thing as 'Bi' data and then wrap into constructor.
-unsafeHash :: Bi a => a -> Hash b
+unsafeHash :: BiEnc a => a -> Hash b
 unsafeHash = unsafeAbstractHash
 
 -- | Specialized formatter for 'Hash'.

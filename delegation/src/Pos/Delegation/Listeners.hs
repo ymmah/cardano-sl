@@ -25,6 +25,7 @@ import           Pos.Delegation.Logic (PskHeavyVerdict (..), processProxySKHeavy
 import           Pos.Lrc.Context (HasLrcContext)
 import           Pos.StateLock (StateLock)
 import           Pos.Util (HasLens')
+import           Pos.Util.Verification (Unver, getUnverUnsafe)
 
 -- Message constraints we need to be defined.
 type DlgMessageConstraint m
@@ -56,10 +57,11 @@ delegationRelays = [ pskHeavyRelay ]
 pskHeavyRelay
     :: forall ctx m . DlgListenerConstraint ctx m
     => Relay m
-pskHeavyRelay = Data $ DataParams MsgTransaction $ \_ _ -> handlePsk
+pskHeavyRelay =
+    RelayData $ DataParams MsgTransaction $ \_ _ -> handlePsk
   where
-    handlePsk :: DlgListenerConstraint ctx m => ProxySKHeavy -> m Bool
-    handlePsk pSk = do
+    handlePsk :: DlgListenerConstraint ctx m => Unver ProxySKHeavy -> m Bool
+    handlePsk p@(getUnverUnsafe -> pSk) = do
         logDebug $ sformat ("Got request to handle heavyweight psk: "%build) pSk
         verdict <- processProxySKHeavy pSk
         logDebug $ sformat ("The verdict for cert "%build%" is: "%shown) pSk verdict
@@ -69,7 +71,7 @@ pskHeavyRelay = Data $ DataParams MsgTransaction $ \_ _ -> handlePsk
                 -- leaders can be calculated incorrectly. This is
                 -- really weird and must not happen. We'll just retry.
                 logWarning "Tip mismatch happened in delegation db!"
-                handlePsk pSk
+                handlePsk p
             PHAdded -> pure True
             PHRemoved -> pure True
             _ -> pure False

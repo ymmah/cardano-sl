@@ -9,7 +9,7 @@ import           Universum
 import           Pos.Binary.Class (BiDec (..), BiEnc (..), encodeListLen, enforceSize)
 import           Pos.Binary.Core ()
 import           Pos.Binary.Crypto ()
-import           Pos.Communication.Types.Relay (DataMsg (..))
+import           Pos.Communication.Relay.Types (DataMsg (..))
 import           Pos.Core (ProxySKHeavy)
 import           Pos.Core.Configuration (HasConfiguration)
 import           Pos.Delegation.Types (DlgUndo (..))
@@ -33,5 +33,6 @@ instance HasConfiguration => BiDec DlgUndo where
 
 instance HasConfiguration => BiEnc (DataMsg ProxySKHeavy) where
     encode = encode . dmContents
+
 instance HasConfiguration => BiDec (DataMsg (Unver ProxySKHeavy)) where
     decode = DataMsg <$> decode

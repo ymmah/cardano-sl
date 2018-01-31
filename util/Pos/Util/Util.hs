@@ -285,8 +285,15 @@ multilineBounds maxSize = F.later formatList
 logException :: LoggerName -> IO a -> IO a
 logException name = E.handleAsync (\e -> handler e >> E.throw e)
   where
+    -- Two ways of logging are used.
+    -- 1. log-warper is used, because it can log to files, etc.
+    -- 2. Simple 'putStrLn' is used, because something may be wrong
+    -- with log-warper and this function is useful in exceptional situations.
     handler :: E.SomeException -> IO ()
-    handler = usingLoggerName name . logError . pretty
+    handler exc = do
+        let message = "logException: " <> pretty exc
+        putStrLn message
+        usingLoggerName name $ logError message
 
 -- | 'bracket' which logs given message after acquiring the resource
 -- and before calling the callback with 'Info' severity.

@@ -291,7 +291,7 @@ instance DSL.Hash h Addr => Interpret h (DSL.Chain h Addr) where
       mkBlock :: Maybe MainBlock -> SlotId -> [TxAux] -> IntM h MainBlock
       mkBlock mPrev slotId ts = do
         -- empty delegation payload
-        dlgPayload <- liftTranslate IntExMkDlg $ mkDlgPayload []
+        dlgPayload <- liftTranslate IntExMkDlg $ pure (UnsafeDlgPayload [])
 
         -- empty update payload
         let updPayload = def

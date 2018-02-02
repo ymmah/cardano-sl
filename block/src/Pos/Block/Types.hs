@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-simplifiable-class-constraints #-}
+
 -- | Types used for block processing.  I suppose this module is
 -- temporary, I expect us to have a meeting in near future.
 

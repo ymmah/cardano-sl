@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-simplifiable-class-constraints #-}
+
 -- | Loading sequence of blunds.
 
 module Pos.DB.Block.Load

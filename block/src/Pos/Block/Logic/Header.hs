@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-simplifiable-class-constraints #-}
+
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
 -- | Header processing logic.

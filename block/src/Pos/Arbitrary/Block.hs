@@ -1,6 +1,6 @@
-{-# LANGUAGE TypeOperators #-}
+{-# OPTIONS_GHC -fno-warn-simplifiable-class-constraints #-}
 
--- TODO: a lot of warnings here... We should start use Hedgehog
+{-# LANGUAGE TypeOperators #-}
 
 module Pos.Arbitrary.Block
        ( HeaderAndParams (..)

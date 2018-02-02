@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-simplifiable-class-constraints #-}
+
 -- | Union of blockchain types.
 
 module Pos.Core.Block.Union.Types

@@ -1,5 +1,5 @@
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes   #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Wallet history
 
@@ -24,7 +24,7 @@ import           System.Wlog                (WithLogger, logDebug, logInfo, logW
 import           Pos.Aeson.ClientTypes      ()
 import           Pos.Aeson.WalletBackup     ()
 import           Pos.Client.Txp.History     (TxHistoryEntry (..), txHistoryListToMap)
-import           Pos.Core                   (ChainDifficulty, timestampToPosix, Address)
+import           Pos.Core                   (Address, ChainDifficulty, timestampToPosix)
 import           Pos.Txp.Core.Types         (TxId, txOutAddress)
 import           Pos.Util.LogSafe           (logInfoS)
 import           Pos.Util.Servant           (encodeCType)
@@ -34,9 +34,10 @@ import           Pos.Wallet.Web.ClientTypes (AccountId (..), Addr, CId, CTx (..)
                                              CTxMeta (..), CWAddressMeta (..),
                                              ScrollLimit, ScrollOffset, Wal, mkCTx)
 import           Pos.Wallet.Web.Error       (WalletError (..))
-import           Pos.Wallet.Web.Mode        (MonadWalletWebMode, convertCIdToAddrs, convertCIdToAddr)
+import           Pos.Wallet.Web.Mode        (MonadWalletWebMode, convertCIdToAddr,
+                                             convertCIdToAddrs)
 import           Pos.Wallet.Web.Pending     (PendingTx (..), ptxPoolInfo, _PtxApplying)
-import           Pos.Wallet.Web.State       (AddressLookupMode (Ever), AddressInfo (..),
+import           Pos.Wallet.Web.State       (AddressInfo (..), AddressLookupMode (Ever),
                                              addOnlyNewTxMetas, getHistoryCache,
                                              getPendingTx, getTxMeta, getWalletPendingTxs,
                                              setWalletTxMeta)
@@ -77,8 +78,11 @@ getFullWalletHistory cWalId = do
 
     pure (fullHistory, fromIntegral $ Map.size fullHistory)
 
+-- | Given provided accounts and optionally address, remain only transactions
+-- which relate to it (input or output of transaction belongs to one of accounts,
+-- and also matches address if given).
 getFilteredHistory
-    :: forall m . MonadWalletWebMode m
+    :: MonadWalletWebMode m
     => CId Wal
     -> [AccountId]
     -> Maybe (CId Addr)
@@ -103,7 +107,8 @@ getFilteredHistory cWalId accIds mCAddrId = do
                  pure $ filterByAddrs (S.singleton addr) history
             | otherwise                -> throw errorBadAddress
     res <- (\(x, y) -> (,y) <$> filterFn x) =<< getFullWalletHistory cWalId
-    res <$ logDebug "getFilteredHistory: filtered transactions"
+    logDebug "getFilteredHistory: filtered transactions"
+    return res
   where
     filterByAddrs
         :: S.Set Address
@@ -136,7 +141,7 @@ getHistoryLimited mCWalId mAccId mAddrId mSkip mLimit = do
             pure (cWalId', accIds')
         (Nothing, Just accId)   -> pure (aiWId accId, [accId])
     (unsortedThs, n) <- getFilteredHistory cWalId accIds mAddrId
-    logDebug "getHistoryLimited: invokated getFilteredHistory"
+    logDebug "getHistoryLimited: invoked getFilteredHistory"
 
     curTime <- liftIO getPOSIXTime
     let getTxTimestamp entry@THEntry{..} =
@@ -206,6 +211,7 @@ constructCTx cWalId addrBelongsToWallet diff entry@THEntry{..}= do
     posixTime <- maybe (liftIO getPOSIXTime) (pure . ctmDate) =<< getTxMeta cWalId cId
     constructCTxWithTime cWalId addrBelongsToWallet diff (entry, posixTime)
 
+-- | Convert 'TxHistoryEntry' with known transaction creation time to 'CTx'.
 constructCTxWithTime
     :: MonadWalletWebMode m
     => CId Wal

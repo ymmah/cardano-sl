@@ -10,7 +10,6 @@ import           Universum
 import           Control.Lens (makeLenses, to, uses, (%=), (.=))
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
-import           Data.List (nub)
 
 import           Pos.Binary.Core ()
 import           Pos.Core.Txp (Tx (..), TxAux (..), TxIn (..), txInputs)
@@ -29,16 +28,16 @@ data TopsortState a = TopsortState
 
 $(makeLenses ''TopsortState)
 
--- Why?
--- ChShersh: Yes, I'm also interested, why? Also, there's 'hashNub' as well.
-{-# ANN topsortTxs ("HLint: ignore Use ordNub" :: Text) #-}
 -- | Does topological sort on things that contain transactions – e.g. can be
 -- used both for sorting @[Tx]@ and @[(Tx, TxWitness)]@.
 --
 -- (Backwards dfs from every node with reverse visiting order
 -- recording. Returns nothing on loop encountered. Return order is
 -- head-first.)
-topsortTxs :: forall a. (Eq a) => (a -> WithHash Tx) -> [a] -> Maybe [a]
+--
+-- TODO: use hashNub here for better efficiency (this requires to have Hashable
+-- implementation for every core type)
+topsortTxs :: forall a. (Ord a) => (a -> WithHash Tx) -> [a] -> Maybe [a]
 topsortTxs toTx input =
     let res = execState dfs1 initState
     in guard (not $ res ^. tsLoop) >> pure (reverse $ res ^. tsResult)
@@ -75,7 +74,7 @@ topsortTxs toTx input =
             tsVisited %= HS.insert txHash
             let visitedNew = HS.insert txHash visitedThis
                 dependsUnfiltered =
-                    nub $ mapMaybe txByInput
+                    ordNub $ mapMaybe txByInput
                                    (tx ^. txInputs . to toList)
             depends <- filterM
                 (\x -> not . HS.member (whHash (toTx x)) <$> use tsVisited)
